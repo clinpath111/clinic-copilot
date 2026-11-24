@@ -19,8 +19,7 @@
 12. Patient data stays in India regions (Supabase Mumbai, Vercel functions in Mumbai).
 13. Fake patients and fake payloads only until the pilot step.
 14. Roles are owner, doctor, receptionist. Check the role on every server route, not just on the screen.
-
-## Honesty about law
+14. Staff roles are doctor and receptionist. The owner is a flag on a staff member (a clinic owner is usually also the doctor). Check the role on every server route, not just on the screen.## Honesty about law
 15. Never write "compliant", "certified", "DPDP-compliant" or "HIPAA" in code, screens, docs or commits. Consent texts, privacy texts, WhatsApp templates and Hindi strings are DRAFTS. Label them "needs lawyer review", "needs doctor review" or "needs native-speaker review".
 
 ## How we work
@@ -29,3 +28,5 @@
 18. Store times in UTC, show them in India time (Asia/Kolkata).
 19. Every screen text exists in English and Hindi.
 20. Nothing is faked silently. Fakes are listed in PROGRESS.md.
+21. After ANY database change, re-run supabase/tests/isolation_test.sql. It must say ALL ... CHECKS PASSED before we commit.
+
