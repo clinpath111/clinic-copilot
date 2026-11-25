@@ -13,25 +13,34 @@ export async function requireSession() {
 export async function requireStaff(allowedRoles?: Role[]) {
   const { supabase, user } = await requireSession();
 
-  const { data: staff } = await supabase
+  const { data: staff, error: staffError } = await supabase
     .from("staff")
-    .select("id, clinic_id, full_name, role, is_owner")
+    .select(
+      "id, clinic_id, full_name, role, is_owner, qualifications, registration_number, registration_council, signature_updated_at"
+    )
     .eq("user_id", user.id)
     .eq("active", true)
     .maybeSingle();
 
-  if (!staff) redirect("/app/no-clinic");
+  if (staffError) throw new Error("Unable to load staff membership.");
+  if (!staff) redirect("/app/onboarding");
 
   const role = staff.role as Role;
   if (allowedRoles && !allowedRoles.includes(role)) redirect("/app?denied=1");
 
-  const { data: clinic } = await supabase
+  const { data: clinic, error: clinicError } = await supabase
     .from("clinics")
     .select("id, name")
     .eq("id", staff.clinic_id)
     .maybeSingle();
 
-  if (!clinic) redirect("/app/no-clinic");
+  if (clinicError) throw new Error("Unable to load clinic details.");
+  if (!clinic) redirect("/app/onboarding");
+
+  const qualifications = (staff.qualifications ?? "") as string;
+  const registrationNumber = (staff.registration_number ?? "") as string;
+  const registrationCouncil = (staff.registration_council ?? "") as string;
+  const signatureUpdatedAt = (staff.signature_updated_at ?? null) as string | null;
 
   return {
     supabase,
@@ -42,6 +51,13 @@ export async function requireStaff(allowedRoles?: Role[]) {
       role,
       isOwner: Boolean(staff.is_owner),
       clinicId: staff.clinic_id as string,
+      qualifications,
+      registrationNumber,
+      registrationCouncil,
+      signatureUpdatedAt,
+      profileComplete:
+        role !== "doctor" ||
+        Boolean(qualifications && registrationNumber && registrationCouncil && signatureUpdatedAt),
     },
     clinic: { id: clinic.id as string, name: clinic.name as string },
   };

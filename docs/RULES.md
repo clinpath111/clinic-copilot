@@ -29,4 +29,5 @@
 19. Every screen text exists in English and Hindi.
 20. Nothing is faked silently. Fakes are listed in PROGRESS.md.
 21. After ANY database change, re-run supabase/tests/isolation_test.sql. It must say ALL ... CHECKS PASSED before we commit.
+22. A doctor's profile (name, qualifications, registration number, council) must be complete before a prescription can be issued.
 
