@@ -2,20 +2,31 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { I18nProvider, useLocale, useT } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/messages";
+import { LanguageToggle } from "@/components/language-toggle";
+import { LogoMark } from "@/components/logo";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { TextField } from "@/components/ui/text-field";
 
-export default function LoginPage() {
+function LoginView() {
   const router = useRouter();
+  const t = useT();
+  const locale = useLocale();
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
 
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setMessage(null);
+    setErrorKey(null);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
@@ -23,12 +34,7 @@ export default function LoginPage() {
     });
     setBusy(false);
     if (error) {
-      const reason = error.code ?? `status ${error.status ?? "unknown"}`;
-      setMessage(
-        error.status === 429
-          ? `Too many tries. Please wait a few minutes and try again. (Reason: ${reason})`
-          : `We could not send the code. Check the email address and try again. (Reason: ${reason})`
-      );
+      setErrorKey(error.status === 429 ? "login.error.rate" : "login.error.send");
       return;
     }
     setStep("code");
@@ -37,7 +43,7 @@ export default function LoginPage() {
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setMessage(null);
+    setErrorKey(null);
     const supabase = createClient();
     const { error } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(),
@@ -46,7 +52,7 @@ export default function LoginPage() {
     });
     setBusy(false);
     if (error) {
-      setMessage("That code did not work. Check it, or go back and ask for a new one.");
+      setErrorKey("login.error.code");
       return;
     }
     router.replace("/app");
@@ -54,62 +60,109 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
-      <h1 className="text-3xl font-semibold">Clinic Copilot</h1>
-      <p className="mt-2 text-base text-gray-600">Staff sign in</p>
+    <div lang={locale} className="min-h-dvh md:grid md:grid-cols-2">
+      {/* Brand panel (desktop only) */}
+      <aside className="relative hidden overflow-hidden bg-linear-to-br from-primary to-primary-ink p-12 text-white md:flex md:flex-col md:justify-between">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-white/10" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 -left-20 size-96 rounded-full bg-white/5" />
+        <div className="relative flex items-center gap-3">
+          <LogoMark tone="light" />
+          <span className="text-xl font-semibold tracking-tight">{t("app.name")}</span>
+        </div>
+        <div className="relative">
+          <h2 className="max-w-md text-4xl font-semibold leading-tight tracking-tight">{t("login.hero")}</h2>
+          <p className="mt-4 max-w-md text-lg text-white/85">{t("login.heroSub")}</p>
+        </div>
+        <p className="relative flex items-center gap-2 text-sm text-white/85">
+          <ShieldCheck size={18} aria-hidden="true" />
+          {t("login.trust")}
+        </p>
+      </aside>
 
-      {step === "email" ? (
-        <form onSubmit={sendCode} className="mt-8 flex flex-col gap-4">
-          <label htmlFor="email" className="text-base font-medium">Your email</label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="h-12 rounded-lg border border-gray-400 px-4 text-base"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="h-12 rounded-lg bg-black px-4 text-base font-medium text-white disabled:opacity-50"
-          >
-            {busy ? "Sending..." : "Send me a code"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={verifyCode} className="mt-8 flex flex-col gap-4">
-          <p className="text-base">We sent a code to {email}. Enter it below.</p>
-          <label htmlFor="code" className="text-base font-medium">Code</label>
-          <input
-            id="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={10}
-            required
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="h-12 rounded-lg border border-gray-400 px-4 text-xl tracking-widest"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="h-12 rounded-lg bg-black px-4 text-base font-medium text-white disabled:opacity-50"
-          >
-            {busy ? "Checking..." : "Sign in"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setStep("email"); setCode(""); setMessage(null); }}
-            className="h-12 rounded-lg border border-gray-400 px-4 text-base"
-          >
-            Use a different email
-          </button>
-        </form>
-      )}
+      <main className="flex min-h-dvh flex-col px-5 py-6 md:min-h-0 md:px-12">
+        <div className="flex items-center justify-between md:justify-end">
+          <div className="flex items-center gap-3 md:hidden">
+            <LogoMark size={32} />
+            <span className="text-lg font-semibold tracking-tight">{t("app.name")}</span>
+          </div>
+          <LanguageToggle compact />
+        </div>
 
-      {message && <p role="alert" className="mt-4 text-base text-red-700">{message}</p>}
-    </main>
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-8">
+          <h1 className="text-3xl font-semibold tracking-tight">{t("login.title")}</h1>
+          <p className="mt-2 text-lg text-ink-soft">{t("login.subtitle")}</p>
+
+          <Card className="mt-8">
+            {step === "email" ? (
+              <form onSubmit={sendCode} className="flex flex-col gap-5">
+                <TextField
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  inputMode="email"
+                  label={t("login.email.label")}
+                  hint={t("login.email.hint")}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <Button type="submit" size="lg" full disabled={busy}>
+                  {busy ? t("login.sending") : t("login.sendCode")}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={verifyCode} className="flex flex-col gap-5">
+                <p className="text-base text-ink-soft">{t("login.code.sent", { email })}</p>
+                <TextField
+                  id="code"
+                  required
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={10}
+                  label={t("login.code.label")}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="text-center text-2xl font-semibold tracking-[0.3em]"
+                />
+                <Button type="submit" size="lg" full disabled={busy}>
+                  {busy ? t("login.verifying") : t("login.verify")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  full
+                  onClick={() => {
+                    setStep("email");
+                    setCode("");
+                    setErrorKey(null);
+                  }}
+                >
+                  {t("login.useOther")}
+                </Button>
+              </form>
+            )}
+          </Card>
+
+          {errorKey && (
+            <div className="mt-4">
+              <Alert tone="danger">{t(errorKey)}</Alert>
+            </div>
+          )}
+
+          <p className="mt-6 flex items-center gap-2 text-sm text-ink-faint md:hidden">
+            <ShieldCheck size={16} aria-hidden="true" />
+            {t("login.trust")}
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <I18nProvider>
+      <LoginView />
+    </I18nProvider>
   );
 }
