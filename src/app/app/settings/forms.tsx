@@ -3,44 +3,18 @@
 import { useActionState } from "react";
 import type { Role } from "@/lib/auth";
 import type { FormState } from "@/lib/form-state";
+import { useT } from "@/lib/i18n/client";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/ui/text-field";
 import { updateClinic, updateProfile } from "./actions";
 
 const initial: FormState = { error: null };
 
-function Field(props: {
-  label: string;
-  name: string;
-  defaultValue: string;
-  hint?: string;
-  required?: boolean;
-  maxLength: number;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={props.name} className="text-base font-medium">{props.label}</label>
-      <input
-        id={props.name}
-        name={props.name}
-        defaultValue={props.defaultValue}
-        required={props.required}
-        maxLength={props.maxLength}
-        className="h-12 rounded-lg border border-gray-400 px-4 text-base"
-      />
-      {props.hint && <p className="text-sm text-gray-600">{props.hint}</p>}
-    </div>
-  );
-}
-
-function Status({ state }: { state: FormState }) {
-  return (
-    <>
-      {state.error && <p role="alert" className="text-base text-red-700">{state.error}</p>}
-      {state.saved && <p role="status" className="text-base text-green-800">Saved.</p>}
-    </>
-  );
-}
-
-export function ProfileForm(props: {
+export function ProfileForm({
+  role,
+  defaults,
+}: {
   role: Role;
   defaults: {
     fullName: string;
@@ -49,75 +23,102 @@ export function ProfileForm(props: {
     registrationCouncil: string;
   };
 }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateProfile, initial);
 
   return (
-    <form action={action} className="mt-4 flex flex-col gap-4">
-      <Field
-        label="Full name"
+    <form action={action} className="flex flex-col gap-5">
+      <TextField
+        id="full_name"
         name="full_name"
-        defaultValue={props.defaults.fullName}
         required
         maxLength={100}
+        defaultValue={defaults.fullName}
+        label={t("settings.profile.fullName")}
       />
-      {props.role === "doctor" && (
+      {role === "doctor" && (
         <>
-          <Field
-            label="Qualifications"
+          <TextField
+            id="qualifications"
             name="qualifications"
-            defaultValue={props.defaults.qualifications}
-            hint="Printed on every prescription. Example: MBBS, MD (General Medicine)"
             maxLength={200}
+            defaultValue={defaults.qualifications}
+            label={t("settings.profile.qualifications")}
+            hint={t("settings.profile.qualificationsHint")}
           />
-          <Field
-            label="Registration number"
+          <TextField
+            id="registration_number"
             name="registration_number"
-            defaultValue={props.defaults.registrationNumber}
-            hint="Printed on every prescription. Check it carefully."
             maxLength={50}
+            defaultValue={defaults.registrationNumber}
+            label={t("settings.profile.registration")}
+            hint={t("settings.profile.registrationHint")}
           />
-          <Field
-            label="Registration council"
+          <TextField
+            id="registration_council"
             name="registration_council"
-            defaultValue={props.defaults.registrationCouncil}
-            hint="Example: Delhi Medical Council"
             maxLength={100}
+            defaultValue={defaults.registrationCouncil}
+            label={t("settings.profile.council")}
+            hint={t("settings.profile.councilHint")}
           />
         </>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="h-12 rounded-lg bg-black px-4 text-base font-medium text-white disabled:opacity-50"
-      >
-        {pending ? "Saving..." : "Save my profile"}
-      </button>
-      <Status state={state} />
+      <Button type="submit" size="lg" disabled={pending} className="w-full md:w-auto">
+        {pending ? t("common.saving") : t("settings.profile.save")}
+      </Button>
+      {state.error && <Alert tone="danger">{state.error}</Alert>}
+      {state.saved && <Alert tone="success">{t("common.saved")}</Alert>}
     </form>
   );
 }
 
-export function ClinicForm(props: {
+export function ClinicForm({
+  defaults,
+}: {
   defaults: { name: string; address: string; city: string; phone: string };
 }) {
+  const t = useT();
   const [state, action, pending] = useActionState(updateClinic, initial);
 
   return (
-    <form action={action} className="mt-4 flex flex-col gap-4">
-      <Field label="Clinic name" name="name" defaultValue={props.defaults.name} required maxLength={120} />
-      <Field label="Address" name="address" defaultValue={props.defaults.address}
-        hint="Printed on prescriptions" maxLength={300} />
-      <Field label="City" name="city" defaultValue={props.defaults.city} maxLength={80} />
-      <Field label="Clinic phone" name="phone" defaultValue={props.defaults.phone}
-        hint="Printed on prescriptions" maxLength={20} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="h-12 rounded-lg bg-black px-4 text-base font-medium text-white disabled:opacity-50"
-      >
-        {pending ? "Saving..." : "Save clinic details"}
-      </button>
-      <Status state={state} />
+    <form action={action} className="flex flex-col gap-5">
+      <TextField
+        id="name"
+        name="name"
+        required
+        maxLength={120}
+        defaultValue={defaults.name}
+        label={t("settings.clinic.name")}
+      />
+      <TextField
+        id="address"
+        name="address"
+        maxLength={300}
+        defaultValue={defaults.address}
+        label={t("settings.clinic.address")}
+      />
+      <TextField
+        id="city"
+        name="city"
+        maxLength={80}
+        defaultValue={defaults.city}
+        label={t("settings.clinic.city")}
+      />
+      <TextField
+        id="phone"
+        name="phone"
+        type="tel"
+        inputMode="tel"
+        maxLength={20}
+        defaultValue={defaults.phone}
+        label={t("settings.clinic.phone")}
+      />
+      <Button type="submit" size="lg" disabled={pending} className="w-full md:w-auto">
+        {pending ? t("common.saving") : t("settings.clinic.save")}
+      </Button>
+      {state.error && <Alert tone="danger">{state.error}</Alert>}
+      {state.saved && <Alert tone="success">{t("common.saved")}</Alert>}
     </form>
   );
 }

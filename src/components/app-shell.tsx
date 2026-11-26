@@ -35,6 +35,7 @@ export async function AppShell({
 
   const items: NavItem[] = [
     { href: "/app", label: t("nav.home"), icon: "home" },
+    { href: "/app/patients", label: t("nav.patients"), icon: "patients" },
     ...(isOwner
       ? ([
           { href: "/app/team", label: t("nav.team"), icon: "team" },

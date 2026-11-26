@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Circle, CheckCircle2, LogOut, Sparkles } from "lucide-react";
+import { Circle, CheckCircle2, LogOut, Search, Sparkles, UserPlus } from "lucide-react";
 import { requireStaff } from "@/lib/auth";
 import { getT } from "@/lib/i18n/server";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -62,6 +62,17 @@ export default async function AppHome({
         </header>
 
         {denied && <Alert tone="danger">{t("home.denied")}</Alert>}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Link href="/app/patients/new" className={buttonClasses("primary", "lg", true)}>
+            <UserPlus size={20} aria-hidden="true" />
+            {t("home.addPatient")}
+          </Link>
+          <Link href="/app/patients" className={buttonClasses("secondary", "lg", true)}>
+            <Search size={20} aria-hidden="true" />
+            {t("home.findPatient")}
+          </Link>
+        </div>
 
         {staff.role === "doctor" &&
           (staff.profileComplete ? (

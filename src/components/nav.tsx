@@ -2,9 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Settings, ShieldCheck, Users } from "lucide-react";
+import { Home, Settings, ShieldCheck, UserRound, Users } from "lucide-react";
 
-const icons = { home: Home, team: Users, activity: ShieldCheck, settings: Settings } as const;
+const icons = {
+  home: Home,
+  patients: UserRound,
+  team: Users,
+  activity: ShieldCheck,
+  settings: Settings,
+} as const;
 
 export type NavItem = { href: string; label: string; icon: keyof typeof icons };
 

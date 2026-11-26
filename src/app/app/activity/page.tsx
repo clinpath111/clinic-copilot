@@ -1,6 +1,19 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import {
+  Building2,
+  Phone,
+  PenLine,
+  ShieldCheck,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { requireStaff } from "@/lib/auth";
+import { getT } from "@/lib/i18n/server";
+import type { MessageKey } from "@/lib/i18n/messages";
+import { AppShell } from "@/components/app-shell";
+import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const instant = false;
 
@@ -12,38 +25,73 @@ type Entry = {
   created_at: string;
 };
 
-const timeFormat = new Intl.DateTimeFormat("en-IN", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "Asia/Kolkata",
-});
+type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
-const LABELS: Record<string, string> = {
-  "clinic.created": "Clinic created",
-  "clinic.updated": "Clinic details changed",
-  "staff.added": "Team member added",
-  "staff.access_changed": "Access changed",
-  "staff.profile_updated": "Profile changed",
-  "signature.updated": "Signature updated",
-  "staff.invited": "Invitation created",
-  "staff.invite_revoked": "Invitation cancelled",
-  "staff.invite_accepted": "Invitation accepted",
-  "patient.created": "Patient added",
-  "patient.updated": "Patient details changed",
-  "contact.created": "Phone contact added",
-  "contact.updated": "Phone contact changed",
-  "consent.recorded": "Consent recorded",
+const ACTION_KEYS: Record<string, MessageKey> = {
+  "clinic.created": "activity.action.clinicCreated",
+  "clinic.updated": "activity.action.clinicUpdated",
+  "staff.added": "activity.action.staffAdded",
+  "staff.access_changed": "activity.action.accessChanged",
+  "staff.profile_updated": "activity.action.profileUpdated",
+  "signature.updated": "activity.action.signatureUpdated",
+  "staff.invited": "activity.action.staffInvited",
+  "staff.invite_revoked": "activity.action.inviteRevoked",
+  "staff.invite_accepted": "activity.action.inviteAccepted",
+  "patient.created": "activity.action.patientCreated",
+  "patient.updated": "activity.action.patientUpdated",
+  "contact.created": "activity.action.contactCreated",
+  "contact.updated": "activity.action.contactUpdated",
+  "consent.recorded": "activity.action.consentRecorded",
 };
 
-function describe(details: Record<string, unknown>): string {
-  return Object.entries(details)
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
-    .join(" | ");
+const FIELD_KEYS: Record<string, MessageKey> = {
+  name: "activity.field.name",
+  address: "activity.field.address",
+  city: "activity.field.city",
+  phone: "activity.field.phone",
+  full_name: "activity.field.fullName",
+  qualifications: "activity.field.qualifications",
+  registration_number: "activity.field.registrationNumber",
+  registration_council: "activity.field.registrationCouncil",
+};
+
+const ICONS: Record<string, LucideIcon> = {
+  clinic: Building2,
+  staff: Users,
+  signature: PenLine,
+  patient: UserRound,
+  contact: Phone,
+  consent: ShieldCheck,
+};
+
+function describe(details: Record<string, unknown>, t: T): string {
+  const parts: string[] = [];
+
+  if (Array.isArray(details.fields)) {
+    const names = (details.fields as string[]).map((field) =>
+      FIELD_KEYS[field] ? t(FIELD_KEYS[field]) : field.replace(/_/g, " ")
+    );
+    parts.push(t("activity.changed", { fields: names.join(", ") }));
+  }
+  if (typeof details.role === "string") {
+    parts.push(details.role === "doctor" ? t("role.doctor") : t("role.receptionist"));
+  }
+  if (typeof details.active === "boolean") {
+    parts.push(details.active ? t("activity.accessOn") : t("activity.accessOff"));
+  }
+  return parts.join(" · ");
 }
 
 export default async function ActivityPage() {
-  const { supabase, staff } = await requireStaff();
+  const { supabase, staff, clinic } = await requireStaff();
   if (!staff.isOwner) redirect("/app?denied=1");
+
+  const { locale, t } = await getT();
+  const timeFormat = new Intl.DateTimeFormat(locale === "hi" ? "hi-IN" : "en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  });
 
   const { data: people, error: peopleError } = await supabase.from("staff").select("id, full_name");
   if (peopleError) throw new Error("Unable to load clinic team members.");
@@ -62,32 +110,50 @@ export default async function ActivityPage() {
   const entries = (rows ?? []) as Entry[];
 
   return (
-    <main className="mx-auto max-w-md p-6">
-      <Link href="/app" className="text-base underline">Back</Link>
-      <h1 className="mt-4 text-2xl font-semibold">Activity log</h1>
-      <p className="mt-2 text-base text-gray-600">
-        The latest 100 changes. It records who did what and when, never patient details.
-        Entries cannot be edited or deleted.
-      </p>
+    <AppShell
+      clinicName={clinic.name}
+      fullName={staff.fullName}
+      role={staff.role}
+      isOwner={staff.isOwner}
+    >
+      <PageHeader title={t("activity.title")} subtitle={t("activity.desc")} />
 
       {entries.length === 0 ? (
-        <p className="mt-6 text-base">Nothing recorded yet.</p>
+        <Card>
+          <p className="text-base text-ink-soft">{t("activity.empty")}</p>
+        </Card>
       ) : (
-        <ul className="mt-6 flex flex-col gap-3">
-          {entries.map((e) => (
-            <li key={e.id} className="rounded-lg border border-gray-400 p-3">
-              <p className="text-base font-medium">{LABELS[e.action] ?? e.action}</p>
-              <p className="text-sm text-gray-600">
-                {timeFormat.format(new Date(e.created_at))} -{" "}
-                {e.actor_staff_id ? (names.get(e.actor_staff_id) ?? "Former team member") : "System"}
-              </p>
-              {Object.keys(e.details).length > 0 && (
-                <p className="mt-1 text-sm text-gray-600">{describe(e.details)}</p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <Card padded={false}>
+          <ul className="divide-y divide-line">
+            {entries.map((e) => {
+              const Icon = ICONS[e.action.split(".")[0]] ?? ShieldCheck;
+              const label = ACTION_KEYS[e.action] ? t(ACTION_KEYS[e.action]) : e.action;
+              const detail = describe(e.details, t);
+              const who = e.actor_staff_id
+                ? (names.get(e.actor_staff_id) ?? t("activity.former"))
+                : t("activity.system");
+
+              return (
+                <li key={e.id} className="flex gap-3 p-4">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-ink"
+                  >
+                    <Icon size={20} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold">{label}</p>
+                    <p className="text-sm text-ink-soft">
+                      {who} · {timeFormat.format(new Date(e.created_at))}
+                    </p>
+                    {detail && <p className="mt-0.5 text-sm text-ink-faint">{detail}</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
       )}
-    </main>
+    </AppShell>
   );
 }

@@ -3,9 +3,14 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useT } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/messages";
+import { Alert } from "@/components/ui/alert";
+import { buttonClasses } from "@/components/ui/button";
 
 const MAX_SIDE = 1000;
 
+// Shrinks the photo and re-saves it as a plain JPEG. This also drops hidden data such as GPS location.
 async function toJpeg(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -16,10 +21,7 @@ async function toJpeg(file: File): Promise<Blob> {
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) {
-    bitmap.close();
-    throw new Error("canvas");
-  }
+  if (!context) throw new Error("canvas");
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
@@ -35,15 +37,20 @@ async function toJpeg(file: File): Promise<Blob> {
   });
 }
 
-export function SignatureUploader(props: {
+export function SignatureUploader({
+  clinicId,
+  userId,
+  currentUrl,
+}: {
   clinicId: string;
   userId: string;
   currentUrl: string | null;
 }) {
+  const t = useT();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: "success" | "danger"; key: MessageKey } | null>(null);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -60,27 +67,24 @@ export function SignatureUploader(props: {
 
       const { error: uploadError } = await supabase.storage
         .from("signatures")
-        .upload(`${props.clinicId}/${props.userId}`, blob, {
-          upsert: true,
-          contentType: "image/jpeg",
-        });
+        .upload(`${clinicId}/${userId}`, blob, { upsert: true, contentType: "image/jpeg" });
       if (uploadError) throw new Error("upload");
 
       const { error: markError } = await supabase.rpc("mark_my_signature_uploaded");
       if (markError) throw new Error("mark");
 
-      setMessage({ kind: "ok", text: "Signature saved." });
+      setMessage({ tone: "success", key: "settings.signature.saved" });
       router.refresh();
     } catch (err) {
       const reason = err instanceof Error ? err.message : "unknown";
       setMessage({
-        kind: "error",
-        text:
+        tone: "danger",
+        key:
           reason === "type"
-            ? "Please choose a PNG or JPEG photo."
+            ? "settings.signature.errType"
             : reason === "size"
-              ? "That file is too large (15 MB maximum)."
-              : "We could not save the signature. Please try again.",
+              ? "settings.signature.errSize"
+              : "settings.signature.errSave",
       });
     } finally {
       setBusy(false);
@@ -89,23 +93,21 @@ export function SignatureUploader(props: {
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-4">
-      {props.currentUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={props.currentUrl}
-          alt="Your saved signature"
-          className="h-28 w-auto max-w-full self-start rounded-lg border border-gray-400 bg-white p-2"
-        />
-      ) : (
-        <p className="text-base text-gray-600">No signature saved yet.</p>
-      )}
+    <div className="flex flex-col gap-4">
+      <div className="flex min-h-32 items-center justify-center rounded-control border border-dashed border-line-strong bg-canvas p-4">
+        {currentUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={currentUrl}
+            alt={t("settings.signature.alt")}
+            className="max-h-28 w-auto max-w-full rounded-lg bg-white p-2"
+          />
+        ) : (
+          <p className="text-base text-ink-faint">{t("settings.signature.none")}</p>
+        )}
+      </div>
 
-      <p className="text-sm text-gray-600">
-        Sign on plain white paper with a dark pen, then take a straight photo in good light.
-        It is printed on every prescription you issue. Location data in the photo is removed
-        before upload.
-      </p>
+      <p className="text-sm text-ink-faint">{t("settings.signature.tips")}</p>
 
       <input
         ref={inputRef}
@@ -118,19 +120,18 @@ export function SignatureUploader(props: {
       />
       <label
         htmlFor="signature-file"
-        className="flex h-12 cursor-pointer items-center justify-center rounded-lg bg-black px-4 text-base font-medium text-white peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2"
+        className={`${buttonClasses(currentUrl ? "secondary" : "primary", "lg", true)} cursor-pointer peer-focus-visible:outline peer-focus-visible:outline-[3px] peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary ${
+          busy ? "pointer-events-none opacity-50" : ""
+        }`}
       >
-        {busy ? "Saving..." : props.currentUrl ? "Replace signature photo" : "Choose signature photo"}
+        {busy
+          ? t("settings.signature.saving")
+          : currentUrl
+            ? t("settings.signature.replace")
+            : t("settings.signature.choose")}
       </label>
 
-      {message && (
-        <p
-          role={message.kind === "error" ? "alert" : "status"}
-          className={message.kind === "error" ? "text-base text-red-700" : "text-base text-green-800"}
-        >
-          {message.text}
-        </p>
-      )}
+      {message && <Alert tone={message.tone}>{t(message.key)}</Alert>}
     </div>
   );
 }
