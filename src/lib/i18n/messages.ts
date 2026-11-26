@@ -1,4 +1,5 @@
 import { enPatients, hiPatients } from "./messages-patients";
+import { enPatientEdit, hiPatientEdit } from "./messages-patient-edit";
 
 // All screen text lives here, in English and Hindi. Never hard-code text in a screen.
 // The Hindi strings are DRAFTS: needs native-speaker review before the pilot.
@@ -175,6 +176,7 @@ const en = {
   "onboarding.offTitle": "Your access has been turned off",
   "onboarding.offBody": "Please ask your clinic owner to turn it back on.",
   ...enPatients,
+  ...enPatientEdit,
 };
 
 export type MessageKey = keyof typeof en;
@@ -352,6 +354,7 @@ const hi: Record<MessageKey, string> = {
   "onboarding.offTitle": "आपकी पहुँच बंद कर दी गई है",
   "onboarding.offBody": "कृपया अपने क्लिनिक के मालिक से इसे फिर से चालू करने को कहें।",
   ...hiPatients,
+  ...hiPatientEdit,
 };
 
 export type Locale = "en" | "hi";

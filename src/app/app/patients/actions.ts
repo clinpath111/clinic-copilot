@@ -7,12 +7,20 @@ import { requireStaff } from "@/lib/auth";
 import { getT } from "@/lib/i18n/server";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { FormState } from "@/lib/form-state";
-import type { ConsentState, PatientRow, PhoneCheck } from "@/lib/patient-types";
-import { attachContactInfo, CONSENT_TEXT_VERSION, currentYearIST } from "@/lib/patients";
-import { formatForDisplay, toE164 } from "@/lib/phone";
+import type { ConsentState, PatientRow, PhoneCheck, SimilarPatient } from "@/lib/patient-types";
+import {
+  attachContactInfo,
+  consentVersionFor,
+  currentYearIST,
+} from "@/lib/patients";
+import { formatForDisplay, isLandline, toE164 } from "@/lib/phone";
 
 const FIELDS = "id, full_name, sex, birth_year, language, contact_id";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function likeEscape(text: string): string {
+  return text.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
 
 // Search runs here (not through the web address) so names and phone numbers never appear in URLs.
 export async function searchPatients(query: string): Promise<PatientRow[]> {
@@ -31,12 +39,12 @@ export async function searchPatients(query: string): Promise<PatientRow[]> {
 
   const digits = text.replace(/[\s+\-()]/g, "");
   if (/^\d{4,}$/.test(digits)) {
-    const { data: contacts, error: contactsError } = await supabase
+    const { data: contacts, error: contactError } = await supabase
       .from("contacts")
       .select("id")
       .ilike("phone_e164", `%${digits}%`)
       .limit(50);
-    if (contactsError) throw new Error("Unable to search patient phone numbers.");
+    if (contactError) throw new Error("Unable to search patient phone numbers.");
     const ids = (contacts ?? []).map((c: { id: string }) => c.id);
     if (ids.length === 0) return [];
 
@@ -50,18 +58,17 @@ export async function searchPatients(query: string): Promise<PatientRow[]> {
     return attachContactInfo(supabase, data ?? []);
   }
 
-  const pattern = `%${text.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
   const { data, error } = await supabase
     .from("patients")
     .select(FIELDS)
-    .ilike("full_name", pattern)
+    .ilike("full_name", `%${likeEscape(text)}%`)
     .order("full_name")
     .limit(25);
   if (error) throw new Error("Unable to search patients.");
   return attachContactInfo(supabase, data ?? []);
 }
 
-// Called while the receptionist types the phone number: is this family already registered?
+// Called while the receptionist types a phone number: valid? landline? who is already on it?
 export async function checkPhone(input: string): Promise<PhoneCheck> {
   const { supabase } = await requireStaff();
   const raw = String(input ?? "").trim();
@@ -109,7 +116,39 @@ export async function checkPhone(input: string): Promise<PhoneCheck> {
     }
   }
 
-  return { status: "ok", display: formatForDisplay(e164), existing, consent, consentDate };
+  return {
+    status: "ok",
+    display: formatForDisplay(e164),
+    landline: isLandline(e164),
+    existing,
+    consent,
+    consentDate,
+  };
+}
+
+// A soft warning: same name and a similar age (within a year) already registered.
+export async function checkSimilar(name: string, ageText: string): Promise<SimilarPatient[]> {
+  const { supabase } = await requireStaff();
+  const fullName = String(name ?? "").trim().slice(0, 100);
+  const age = interpretAge(String(ageText ?? ""), currentYearIST());
+  if (fullName.length < 2 || !age) return [];
+
+  const { data, error } = await supabase
+    .from("patients")
+    .select(FIELDS)
+    .ilike("full_name", likeEscape(fullName))
+    .gte("birth_year", age.year - 1)
+    .lte("birth_year", age.year + 1)
+    .limit(5);
+  if (error) throw new Error("Unable to check for similar patients.");
+
+  const rows = await attachContactInfo(supabase, data ?? []);
+  return rows.map((r) => ({
+    id: r.id,
+    fullName: r.fullName,
+    birthYear: r.birthYear,
+    phone: r.phone,
+  }));
 }
 
 const ERROR_KEYS: Record<string, MessageKey> = {
@@ -118,6 +157,11 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   invalid_name: "error.name",
   duplicate_patient: "patients.err.duplicate",
 };
+
+function errorKeyFor(message: string | undefined): MessageKey {
+  const code = Object.keys(ERROR_KEYS).find((c) => message?.includes(c));
+  return code ? ERROR_KEYS[code] : "error.generic";
+}
 
 export async function registerPatient(_prev: FormState, formData: FormData): Promise<FormState> {
   const { supabase } = await requireStaff();
@@ -129,13 +173,16 @@ export async function registerPatient(_prev: FormState, formData: FormData): Pro
   const fullName = String(formData.get("full_name") ?? "").trim();
   if (fullName.length < 2 || fullName.length > 100) return { error: t("error.name") };
 
-  const age = interpretAge(String(formData.get("age_or_year") ?? ""), currentYearIST());
+  const year = currentYearIST();
+  const age = interpretAge(String(formData.get("age_or_year") ?? ""), year);
   if (!age) return { error: t("patients.err.age") };
 
   const sexInput = String(formData.get("sex") ?? "");
   const sex = ["female", "male", "other"].includes(sexInput) ? sexInput : null;
   const language = formData.get("language") === "hi" ? "hi" : "en";
-  const consent = formData.get("consent") === "yes";
+
+  // WhatsApp consent is never recorded for a landline.
+  const consent = formData.get("consent") === "yes" && !isLandline(phone);
 
   const { data, error } = await supabase.rpc("register_patient", {
     p_phone: phone,
@@ -144,19 +191,67 @@ export async function registerPatient(_prev: FormState, formData: FormData): Pro
     p_birth_year: age.year,
     p_language: language,
     p_consent: consent,
-    p_consent_text_version: CONSENT_TEXT_VERSION,
+    p_consent_text_version: consentVersionFor(age.year, year),
   });
-
-  if (error) {
-    const code = Object.keys(ERROR_KEYS).find((c) => error.message?.includes(c));
-    return { error: t(code ? ERROR_KEYS[code] : "error.generic") };
-  }
+  if (error) return { error: t(errorKeyFor(error.message)) };
 
   const patientId = (data as { patient_id?: string } | null)?.patient_id;
   if (!patientId) return { error: t("error.generic") };
 
   revalidatePath("/app/patients");
   redirect(`/app/patients/${patientId}`);
+}
+
+export async function updatePatient(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { supabase } = await requireStaff();
+  const { t } = await getT();
+
+  const id = String(formData.get("patient_id") ?? "");
+  if (!UUID.test(id)) return { error: t("error.generic") };
+
+  const fullName = String(formData.get("full_name") ?? "").trim();
+  if (fullName.length < 2 || fullName.length > 100) return { error: t("error.name") };
+
+  const age = interpretAge(String(formData.get("age_or_year") ?? ""), currentYearIST());
+  if (!age) return { error: t("patients.err.age") };
+
+  const sexInput = String(formData.get("sex") ?? "");
+  const sex = ["female", "male", "other"].includes(sexInput) ? sexInput : null;
+  const language = formData.get("language") === "hi" ? "hi" : "en";
+
+  const { data, error } = await supabase
+    .from("patients")
+    .update({ full_name: fullName, birth_year: age.year, sex, language })
+    .eq("id", id)
+    .select("id");
+
+  if (error) return { error: t(error.code === "23505" ? "patients.err.duplicate" : "error.generic") };
+  if (!data || data.length !== 1) return { error: t("error.generic") };
+
+  revalidatePath("/app/patients");
+  revalidatePath(`/app/patients/${id}`);
+  redirect(`/app/patients/${id}`);
+}
+
+export async function changePhone(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { supabase } = await requireStaff();
+  const { t } = await getT();
+
+  const id = String(formData.get("patient_id") ?? "");
+  if (!UUID.test(id)) return { error: t("error.generic") };
+
+  const phone = toE164(String(formData.get("phone") ?? ""));
+  if (!phone) return { error: t("patients.err.phone") };
+
+  const { error } = await supabase.rpc("change_patient_phone", {
+    p_patient_id: id,
+    p_phone: phone,
+  });
+  if (error) return { error: t(errorKeyFor(error.message)) };
+
+  revalidatePath("/app/patients");
+  revalidatePath(`/app/patients/${id}`);
+  redirect(`/app/patients/${id}`);
 }
 
 // Consent is only ever ADDED as a new record. Withdrawing is a new record too.
@@ -171,6 +266,25 @@ export async function recordConsent(formData: FormData): Promise<void> {
     throw new Error("Invalid consent update.");
   }
 
+  const { data: patient, error: patientError } = await supabase
+    .from("patients")
+    .select("birth_year, contact_id")
+    .eq("id", patientId)
+    .maybeSingle();
+  if (patientError) throw new Error("Unable to load patient details.");
+  if (!patient || patient.contact_id !== contactId) throw new Error("Invalid patient contact.");
+
+  if (status === "granted") {
+    const { data: contact, error: contactError } = await supabase
+      .from("contacts")
+      .select("phone_e164")
+      .eq("id", contactId)
+      .maybeSingle();
+    if (contactError) throw new Error("Unable to load patient contact details.");
+    if (!contact) throw new Error("Patient contact was not found.");
+    if (isLandline(contact.phone_e164 as string)) return;
+  }
+
   const { data: latest, error: latestError } = await supabase
     .from("consents")
     .select("status")
@@ -182,13 +296,14 @@ export async function recordConsent(formData: FormData): Promise<void> {
   if (latestError) throw new Error("Unable to load the WhatsApp consent status.");
   if ((latest?.status ?? "none") === status) return;
 
+  const version = consentVersionFor(patient.birth_year as number, currentYearIST());
   const { error } = await supabase.from("consents").insert({
     clinic_id: staff.clinicId,
     contact_id: contactId,
     purpose: "whatsapp_messages",
     status,
     method: "staff_entry",
-    text_version: CONSENT_TEXT_VERSION,
+    text_version: version,
     captured_by: staff.id,
   });
   if (error) throw new Error("Unable to record WhatsApp consent.");

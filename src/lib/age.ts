@@ -10,3 +10,8 @@ export function interpretAge(
   if (n >= 1900 && n <= currentYear) return { year: n, age: currentYear - n };
   return null;
 }
+
+// True when the patient could be under 18. We only know the birth YEAR, so we are careful.
+export function isPossiblyMinor(birthYear: number, currentYear: number): boolean {
+  return currentYear - birthYear <= 18;
+}

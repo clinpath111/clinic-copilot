@@ -53,6 +53,9 @@ const FIELD_KEYS: Record<string, MessageKey> = {
   qualifications: "activity.field.qualifications",
   registration_number: "activity.field.registrationNumber",
   registration_council: "activity.field.registrationCouncil",
+  birth_year: "activity.field.birthYear",
+  sex: "activity.field.sex",
+  language: "activity.field.language",
 };
 
 const ICONS: Record<string, LucideIcon> = {

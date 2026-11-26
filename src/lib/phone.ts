@@ -11,3 +11,8 @@ export function formatForDisplay(e164: string): string {
   const parsed = parsePhoneNumberFromString(e164);
   return parsed ? parsed.formatInternational() : e164;
 }
+
+// WhatsApp cannot reach landlines. Numbers whose type is unknown (like many US numbers) are allowed.
+export function isLandline(e164: string): boolean {
+  return parsePhoneNumberFromString(e164)?.getType() === "FIXED_LINE";
+}

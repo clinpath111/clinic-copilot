@@ -1,12 +1,20 @@
 import type { createClient } from "@/lib/supabase/server";
+import { isPossiblyMinor } from "./age";
 import type { ConsentState, PatientRow } from "./patient-types";
-import { formatForDisplay } from "./phone";
+import { formatForDisplay, isLandline } from "./phone";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 // Stored with every consent record. Change it whenever the consent wording changes.
 // The wording is a DRAFT: needs lawyer review before real patients are asked.
 export const CONSENT_TEXT_VERSION = "draft-v0";
+export const GUARDIAN_CONSENT_TEXT_VERSION = "draft-v0-guardian";
+
+export function consentVersionFor(birthYear: number, currentYear: number): string {
+  return isPossiblyMinor(birthYear, currentYear)
+    ? GUARDIAN_CONSENT_TEXT_VERSION
+    : CONSENT_TEXT_VERSION;
+}
 
 export function currentYearIST(): number {
   return Number(
@@ -29,6 +37,7 @@ export async function attachContactInfo(supabase: Db, rows: DbPatient[]): Promis
     ...new Set(rows.map((r) => r.contact_id).filter((id): id is string => Boolean(id))),
   ];
   const phones = new Map<string, string>();
+  const landlines = new Map<string, boolean>();
   const consent = new Map<string, ConsentState>();
 
   if (contactIds.length > 0) {
@@ -37,7 +46,11 @@ export async function attachContactInfo(supabase: Db, rows: DbPatient[]): Promis
       .select("id, phone_e164")
       .in("id", contactIds);
     if (contactsError) throw new Error("Unable to load patient contact details.");
-    for (const c of contacts ?? []) phones.set(c.id as string, formatForDisplay(c.phone_e164 as string));
+    for (const c of contacts ?? []) {
+      const e164 = c.phone_e164 as string;
+      phones.set(c.id as string, formatForDisplay(e164));
+      landlines.set(c.id as string, isLandline(e164));
+    }
 
     const { data: consents, error: consentsError } = await supabase
       .from("consents")
@@ -59,6 +72,7 @@ export async function attachContactInfo(supabase: Db, rows: DbPatient[]): Promis
     birthYear: r.birth_year,
     language: r.language === "hi" ? "hi" : "en",
     phone: r.contact_id ? (phones.get(r.contact_id) ?? "") : "",
+    landline: r.contact_id ? (landlines.get(r.contact_id) ?? false) : false,
     consent: r.contact_id ? (consent.get(r.contact_id) ?? "none") : "none",
   }));
 }

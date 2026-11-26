@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Phone } from "lucide-react";
+import { ArrowLeft, Pencil, Phone } from "lucide-react";
+import { isPossiblyMinor } from "@/lib/age";
 import { requireStaff } from "@/lib/auth";
 import { getT } from "@/lib/i18n/server";
 import { messages, type MessageKey } from "@/lib/i18n/messages";
@@ -9,7 +10,7 @@ import { AppShell } from "@/components/app-shell";
 import { Alert } from "@/components/ui/alert";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { recordConsent } from "../actions";
 
@@ -45,6 +46,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
 
   const [row] = await attachContactInfo(supabase, [patient]);
   const contactId = patient.contact_id as string | null;
+  const landline = row.landline;
 
   let family: { id: string; full_name: string; birth_year: number }[] = [];
   let history: { status: string; method: string; created_at: string }[] = [];
@@ -70,6 +72,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   }
 
   const currentYear = currentYearIST();
+  const minor = isPossiblyMinor(row.birthYear, currentYear);
   const dateFormat = new Intl.DateTimeFormat(locale === "hi" ? "hi-IN" : "en-IN", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -87,6 +90,8 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     withdrawn: "detail.consent.withdrawnBody",
     none: "detail.consent.noneBody",
   };
+  const consentTone = row.consent === "granted" ? "success" : row.consent === "withdrawn" ? "warning" : "neutral";
+  const consentTextKey = minor ? "register.consent.textMinor" : "register.consent.text";
 
   return (
     <AppShell
@@ -100,18 +105,26 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
         {t("detail.back")}
       </Link>
 
-      <header className="mb-6 flex items-center gap-4">
-        <Avatar name={row.fullName} size={64} />
-        <div className="min-w-0">
-          <h1 className="truncate text-3xl font-semibold tracking-tight">{row.fullName}</h1>
-          <p className="mt-1 text-lg text-ink-soft">{meta}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge>{t(row.language === "hi" ? "patients.lang.hi" : "patients.lang.en")}</Badge>
-            <Badge tone={row.consent === "granted" ? "success" : row.consent === "withdrawn" ? "warning" : "neutral"}>
-              {t(row.consent === "granted" ? "consent.granted" : row.consent === "withdrawn" ? "consent.withdrawn" : "consent.none")}
-            </Badge>
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Avatar name={row.fullName} size={64} />
+          <div className="min-w-0">
+            <h1 className="truncate text-3xl font-semibold tracking-tight">{row.fullName}</h1>
+            <p className="mt-1 text-lg text-ink-soft">{meta}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge>{t(row.language === "hi" ? "patients.lang.hi" : "patients.lang.en")}</Badge>
+              {!landline && (
+                <Badge tone={consentTone}>
+                  {t(row.consent === "granted" ? "consent.granted" : row.consent === "withdrawn" ? "consent.withdrawn" : "consent.none")}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
+        <Link href={`/app/patients/${id}/edit`} className={buttonClasses("secondary")}>
+          <Pencil size={18} aria-hidden="true" />
+          {t("detail.edit")}
+        </Link>
       </header>
 
       <div className="flex flex-col gap-5">
@@ -153,35 +166,49 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
 
         <Card>
           <h2 className="text-xl font-semibold tracking-tight">{t("detail.consent.title")}</h2>
-          <div className="mt-3">
-            <Alert tone={row.consent === "granted" ? "success" : row.consent === "withdrawn" ? "warning" : "info"}>
-              {t(consentBody[row.consent])}
-            </Alert>
-          </div>
 
-          {contactId && (
-            <form action={recordConsent} className="mt-4">
-              <input type="hidden" name="patient_id" value={id} />
-              <input type="hidden" name="contact_id" value={contactId} />
-              {row.consent === "granted" ? (
-                <>
-                  <input type="hidden" name="status" value="withdrawn" />
-                  <Button type="submit" variant="secondary" full>
-                    {t("detail.consent.stop")}
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <p lang={row.language} className="mb-4 rounded-control bg-canvas p-4 text-base text-ink-soft">
-                    {messages[row.language]["register.consent.text"]}
-                  </p>
-                  <input type="hidden" name="status" value="granted" />
-                  <Button type="submit" full>
-                    {t("detail.consent.record")}
-                  </Button>
-                </>
+          {landline ? (
+            <div className="mt-3">
+              <Alert tone="info">{t("detail.consent.landline")}</Alert>
+            </div>
+          ) : (
+            <>
+              <div className="mt-3">
+                <Alert tone={row.consent === "granted" ? "success" : row.consent === "withdrawn" ? "warning" : "info"}>
+                  {t(consentBody[row.consent])}
+                </Alert>
+              </div>
+
+              {contactId && (
+                <form action={recordConsent} className="mt-4">
+                  <input type="hidden" name="patient_id" value={id} />
+                  <input type="hidden" name="contact_id" value={contactId} />
+                  {row.consent === "granted" ? (
+                    <>
+                      <input type="hidden" name="status" value="withdrawn" />
+                      <Button type="submit" variant="secondary" full>
+                        {t("detail.consent.stop")}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {minor && (
+                        <div className="mb-4">
+                          <Alert tone="info">{t("register.consent.minorNote")}</Alert>
+                        </div>
+                      )}
+                      <p lang={row.language} className="mb-4 rounded-control bg-canvas p-4 text-base text-ink-soft">
+                        {messages[row.language][consentTextKey]}
+                      </p>
+                      <input type="hidden" name="status" value="granted" />
+                      <Button type="submit" full>
+                        {minor ? t("detail.consent.recordMinor") : t("detail.consent.record")}
+                      </Button>
+                    </>
+                  )}
+                </form>
               )}
-            </form>
+            </>
           )}
 
           {history.length > 0 && (

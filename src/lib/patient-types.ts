@@ -7,7 +7,15 @@ export type PatientRow = {
   birthYear: number;
   language: "en" | "hi";
   phone: string;
+  landline: boolean;
   consent: ConsentState;
+};
+
+export type SimilarPatient = {
+  id: string;
+  fullName: string;
+  birthYear: number;
+  phone: string;
 };
 
 export type PhoneCheck =
@@ -16,6 +24,7 @@ export type PhoneCheck =
   | {
       status: "ok";
       display: string;
+      landline: boolean;
       existing: { id: string; fullName: string; birthYear: number }[];
       consent: ConsentState;
       consentDate: string | null;

@@ -115,9 +115,11 @@ export function PatientSearch({
                         <p className="truncate text-base font-semibold">{p.fullName}</p>
                         <p className="truncate text-sm text-ink-soft">{meta}</p>
                       </div>
-                      <span className="hidden shrink-0 sm:block">
-                        <Badge tone={CONSENT_TONE[p.consent]}>{t(CONSENT_LABEL[p.consent])}</Badge>
-                      </span>
+                      {!p.landline && (
+                        <span className="hidden shrink-0 sm:block">
+                          <Badge tone={CONSENT_TONE[p.consent]}>{t(CONSENT_LABEL[p.consent])}</Badge>
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
